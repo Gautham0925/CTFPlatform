@@ -24,7 +24,13 @@ from CTFd.utils import set_config
 PLUGIN_NAME = "arena"
 VERSION_KEY = PLUGIN_NAME + "_alembic_version"
 MIGRATIONS_PATH = os.path.join(os.path.dirname(__file__), "migrations")
-ARENA_TABLES = ("arena_events", "arena_registrations", "arena_roles")
+
+
+def arena_tables():
+    """All Arena tables declared by the models (grows with each phase)."""
+    from CTFd.models import db
+
+    return tuple(sorted(t for t in db.metadata.tables if t.startswith("arena_")))
 
 
 class MigrationError(RuntimeError):
@@ -55,7 +61,7 @@ def current_revision():
 def existing_arena_tables():
     engine = current_app.db.engine
     names = set(inspect(engine).get_table_names())
-    return sorted(t for t in ARENA_TABLES if t in names)
+    return sorted(t for t in arena_tables() if t in names)
 
 
 def upgrade(revision=None):
@@ -117,7 +123,7 @@ def schema_state():
     try:
         if is_sqlite():
             tables = existing_arena_tables()
-            ok = len(tables) == len(ARENA_TABLES)
+            ok = len(tables) == len(arena_tables())
             return ok, {"backend": "sqlite", "head": head, "tables": tables}
         current = current_revision()
         return current == head, {"backend": "sql", "head": head, "current": current}

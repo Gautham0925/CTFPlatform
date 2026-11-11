@@ -35,7 +35,7 @@ def test_downgrade_requires_confirmation(app):
     r = run(app, "db-downgrade", "base")
     assert r.exit_code == 2
     with app.app_context():
-        assert len(dbmigrate.existing_arena_tables()) == 3
+        assert len(dbmigrate.existing_arena_tables()) == len(dbmigrate.arena_tables())
 
 
 def test_downgrade_base_then_migrate(app):
@@ -47,14 +47,14 @@ def test_downgrade_base_then_migrate(app):
     r = run(app, "migrate")
     assert r.exit_code == 0, r.output
     with app.app_context():
-        assert len(dbmigrate.existing_arena_tables()) == 3
+        assert len(dbmigrate.existing_arena_tables()) == len(dbmigrate.arena_tables())
 
 
 def test_downgrade_unknown_revision_errors(app):
     r = run(app, "db-downgrade", "deadbeef0000", "--yes")
     assert r.exit_code != 0
     with app.app_context():
-        assert len(dbmigrate.existing_arena_tables()) == 3
+        assert len(dbmigrate.existing_arena_tables()) == len(dbmigrate.arena_tables())
 
 
 def test_check_integrity_passes_on_clean_db(app):
@@ -86,8 +86,35 @@ def test_check_integrity_detects_bad_windows_and_redundant_roles(app):
     with app.app_context():
         t = datetime.datetime.utcnow()
         gen_event("bad", starts_at=t, ends_at=t - datetime.timedelta(hours=1))
-        gen_role(admin_user().id, "auditor")
+        gen_role(admin_user().id, "analyst")
     r = run(app, "check-integrity")
     assert r.exit_code == 1
     assert "starts_at >= ends_at" in r.output
     assert "redundant" in r.output
+
+
+def test_worker_health_exit_codes(app):
+    import socket
+
+    from CTFd.plugins.arena.worker import Worker
+
+    r = run(app, "worker-health")
+    assert r.exit_code == 1 and json.loads(r.output)["alive"] == 0
+    with app.app_context():
+        w = Worker(app, schedule=False)
+        w.run(max_iterations=1)  # registers + heartbeats, then stops
+        db.session.remove()
+    # a stopped worker no longer counts as alive
+    r = run(app, "worker-health")
+    assert r.exit_code == 1
+    with app.app_context():
+        from CTFd.plugins.arena.models import ArenaWorker
+
+        row = db.session.get(ArenaWorker, w.id)
+        row.status = "running"
+        db.session.commit()
+    r = run(app, "worker-health", "--host")
+    assert r.exit_code == 0 and json.loads(r.output)["alive"] == 1
+    assert json.loads(r.output)["workers"][0]["id"].startswith(
+        socket.gethostname()[:40]
+    )

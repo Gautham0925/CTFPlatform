@@ -8,7 +8,7 @@
 import time
 import uuid
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 from sqlalchemy import text
 
 from CTFd.cache import cache
@@ -55,3 +55,23 @@ def readyz():
     response.status_code = 200 if ok else 503
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+_PROBES = {"arena_health.healthz": healthz, "arena_health.readyz": readyz}
+
+
+def install_priority_probe(app):
+    """Answer probes before every other before_request hook.
+
+    Native hooks (setup redirect, import lock, user tracking, ...) would
+    otherwise turn /arena/readyz into a 302 to /setup on a fresh install,
+    which a redirect-following probe reports as healthy.
+    """
+
+    def _probe_first():
+        view = _PROBES.get(request.endpoint)
+        if view is not None:
+            return view()
+        return None
+
+    app.before_request_funcs.setdefault(None, []).insert(0, _probe_first)

@@ -16,7 +16,7 @@ from CTFd.plugins.arena.models import ArenaEvent, ArenaRegistration
 from CTFd.utils.user import get_current_user
 
 # Statuses that non-privileged users may ever see.
-PUBLIC_STATUSES = frozenset({"published", "running", "paused", "ended", "archived"})
+PUBLIC_STATUSES = frozenset({"upcoming", "active", "paused", "completed", "archived"})
 # Registration statuses that let a user see a private event.
 PRIVATE_VIEW_REGISTRATION = frozenset({"pending", "approved"})
 
@@ -80,3 +80,51 @@ def scoped_get_or_404(model, object_id, event):
     if obj is None:
         abort(404)
     return obj
+
+
+def listed_events_query(user):
+    """Events shown in listings for ``user`` in O(1) queries.
+
+    Mirrors is_listed_for(): role holders/superadmins see everything they hold
+    a role for; others see public events (unlisted excluded) and private events
+    they registered for.
+    """
+    from sqlalchemy import and_, or_
+
+    from CTFd.plugins.arena.models import ArenaRole
+
+    if rbac.is_superadmin(user):
+        return ArenaEvent.query
+    conditions = [
+        and_(
+            ArenaEvent.status.in_(PUBLIC_STATUSES),
+            ArenaEvent.visibility == "public",
+        )
+    ]
+    if user is not None and not user.banned:
+        role_rows = ArenaRole.query.with_entities(ArenaRole.event_id).filter(
+            ArenaRole.user_id == user.id
+        )
+        role_ids = {eid for (eid,) in role_rows}
+        if None in role_ids:  # global role
+            return ArenaEvent.query
+        if role_ids:
+            conditions.append(ArenaEvent.id.in_(role_ids))
+        reg_ids = {
+            eid
+            for (eid,) in ArenaRegistration.query.with_entities(
+                ArenaRegistration.event_id
+            ).filter(
+                ArenaRegistration.user_id == user.id,
+                ArenaRegistration.status.in_(PRIVATE_VIEW_REGISTRATION),
+            )
+        }
+        if reg_ids:
+            conditions.append(
+                and_(
+                    ArenaEvent.status.in_(PUBLIC_STATUSES),
+                    ArenaEvent.visibility == "private",
+                    ArenaEvent.id.in_(reg_ids),
+                )
+            )
+    return ArenaEvent.query.filter(or_(*conditions))

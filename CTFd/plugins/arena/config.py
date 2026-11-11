@@ -11,7 +11,7 @@ from dataclasses import dataclass
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off", ""}
 
-RUNNER_MODES = ("mock",)  # "remote" is introduced in Phase 8
+RUNNER_MODES = ("mock", "remote")  # remote = runner/ service over HTTPS+HMAC
 
 
 class ArenaConfigError(ValueError):
@@ -69,6 +69,26 @@ class ArenaSettings:
             runner_mode=runner_mode,
             schema_check_ttl=_int(app, "ARENA_SCHEMA_CHECK_TTL", 30, minimum=0),
         )
+
+
+def import_environment(app, environ=None):
+    """Copy ARENA_* environment variables into ``app.config``.
+
+    CTFd only loads the keys it knows about into its config, so without this
+    an ``ARENA_SECRET_KEY`` (or retention, lab, flag-secret ...) set in the
+    container environment would be silently ignored. Explicit app config
+    wins; empty values are treated as unset.
+    """
+    environ = os.environ if environ is None else environ
+    imported = []
+    for key, value in environ.items():
+        if key.startswith("ARENA_") and key not in app.config and value != "":
+            app.config[key] = value
+            imported.append(key)
+    secret = app.config.get("ARENA_SECRET_KEY")
+    if secret is not None and len(str(secret)) < 32:
+        raise ArenaConfigError("ARENA_SECRET_KEY must be at least 32 characters")
+    return sorted(imported)
 
 
 def get_settings(app):

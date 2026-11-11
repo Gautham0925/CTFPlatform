@@ -1,0 +1,28 @@
+# Bare-metal (no Docker) web service. Install:
+#   sudo cp deploy/systemd/arena-*.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now arena-web arena-worker
+[Unit]
+Description=CTFd + Arena web (gunicorn)
+After=network-online.target mariadb.service redis-server.service
+Wants=network-online.target
+
+[Service]
+User=ctfd
+Group=ctfd
+WorkingDirectory=/opt/arena
+EnvironmentFile=/etc/arena/arena.env
+ExecStartPre=/opt/arena/.venv/bin/flask db upgrade
+ExecStartPre=/opt/arena/.venv/bin/flask arena migrate
+ExecStart=/opt/arena/.venv/bin/gunicorn "CTFd:create_app()" \
+    --bind 127.0.0.1:8000 --workers ${WORKERS} --worker-class gevent \
+    --keep-alive 75 --access-logfile - --error-logfile -
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/arena/uploads /var/log/arena
+PrivateTmp=true
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

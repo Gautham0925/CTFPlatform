@@ -96,3 +96,31 @@ def test_schema_guard_does_not_cache_negative_result(app, monkeypatch):
     assert c.get("/t/guarded").status_code == 503
     state["ok"] = True  # operator ran the migration
     assert c.get("/t/guarded").status_code == 200
+
+
+def test_probes_answer_before_setup_and_import_lock():
+    """A fresh (not set up) CTFd must not turn probes into setup redirects."""
+    from tests.helpers import create_ctfd
+
+    app = create_ctfd(setup=False, enable_plugins=True)
+    with app.app_context():
+        if not dbmigrate.is_sqlite(app):
+            dbmigrate.upgrade()
+        schema_guard.reset_cache()
+    try:
+        c = app.test_client()
+        assert c.get("/").status_code == 302  # native setup redirect still applies
+        r = c.get("/arena/readyz")
+        assert r.status_code == 200 and r.get_json()["ready"] is True
+        assert c.get("/arena/healthz").status_code == 200
+        with app.app_context():
+            from CTFd.cache import cache
+
+            cache.set("import_status", "started")  # native import lock
+            try:
+                assert c.get("/").status_code == 403
+                assert c.get("/arena/healthz").status_code == 200
+            finally:
+                cache.delete("import_status")
+    finally:
+        destroy_ctfd(app)

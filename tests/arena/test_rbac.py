@@ -58,8 +58,8 @@ def test_superadmin_has_every_permission(app):
 def test_global_role_applies_to_all_events(app):
     with app.app_context():
         a, b = gen_event("a").id, gen_event("b").id
-        uid = make_user("gaud")
-        gen_role(uid, "auditor", event_id=None)
+        uid = make_user("ganalyst")
+        gen_role(uid, "analyst", event_id=None)
         u = db.session.get(Users, uid)
         assert rbac.has_permission(u, rbac.PERM_AUDIT_READ, event_id=a)
         assert rbac.has_permission(u, rbac.PERM_AUDIT_READ, event_id=b)
@@ -70,7 +70,7 @@ def test_banned_users_lose_roles_and_superadmin(app):
     with app.app_context():
         a = gen_event("a").id
         uid = make_user("ea")
-        gen_role(uid, "event_admin", event_id=a)
+        gen_role(uid, "organizer", event_id=a)
         u = db.session.get(Users, uid)
         u.banned = True
         db.session.commit()
@@ -90,11 +90,11 @@ def test_unknown_permission_fails_closed(app):
 def test_grant_is_idempotent_including_global_roles(app):
     with app.app_context():
         uid = make_user("g")
-        r1 = rbac.grant_role(uid, "auditor")
-        r2 = rbac.grant_role(uid, "auditor")
+        r1 = rbac.grant_role(uid, "analyst")
+        r2 = rbac.grant_role(uid, "analyst")
         assert r1.id == r2.id
         assert ArenaRole.query.filter_by(user_id=uid).count() == 1
-        assert rbac.revoke_role(uid, "auditor") == 1
+        assert rbac.revoke_role(uid, "analyst") == 1
         with pytest.raises(ValueError):
             rbac.grant_role(uid, "god")
 

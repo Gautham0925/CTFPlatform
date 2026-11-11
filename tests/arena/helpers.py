@@ -37,11 +37,11 @@ def now():
     return datetime.datetime.utcnow()
 
 
-def gen_event(slug="event", **kwargs):
+def gen_event(slug="event", with_sealed_module=True, **kwargs):
     defaults = {
         "name": slug.title(),
         "type": "jeopardy",
-        "status": "running",
+        "status": "active",
         "visibility": "public",
         "starts_at": now() - datetime.timedelta(hours=1),
         "ends_at": now() + datetime.timedelta(hours=5),
@@ -49,6 +49,12 @@ def gen_event(slug="event", **kwargs):
     defaults.update(kwargs)
     event = ArenaEvent(slug=slug, **defaults)
     db.session.add(event)
+    db.session.flush()
+    if with_sealed_module and event.sealed_module_id is None:
+        # Mirror production (services.events.create_event).
+        from CTFd.plugins.arena.services.events import ensure_sealed_module
+
+        ensure_sealed_module(event)
     db.session.commit()
     return event
 

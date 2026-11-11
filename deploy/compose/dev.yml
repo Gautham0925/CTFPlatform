@@ -1,0 +1,72 @@
+# Profile A - local development / single-machine evaluation.
+#   docker compose -f deploy/compose/dev.yml up -d --build
+# Plain HTTP on 127.0.0.1:8000 only, throwaway credentials, mock runner and
+# mock labs. NOT for internet-facing use.
+name: arena-dev
+services:
+  ctfd:
+    build: { context: ../.., dockerfile: deploy/docker/platform.Dockerfile }
+    image: arena-platform:local
+    command: ["web"]
+    restart: unless-stopped
+    ports: ["127.0.0.1:8000:8000"]
+    environment: &appenv
+      DATABASE_URL: mysql+pymysql://ctfd:ctfd-dev@db/ctfd
+      REDIS_URL: redis://cache:6379
+      SECRET_KEY: dev-only-secret-key-change-me-0123456789
+      UPLOAD_FOLDER: /var/uploads
+      WORKERS: "1"
+      ACCESS_LOG: "-"
+      ERROR_LOG: "-"
+      ARENA_RUNNER_MODE: mock
+      ARENA_CERTIFICATES_ENABLED: "false"
+    volumes: [uploads:/var/uploads]
+    depends_on:
+      db: { condition: service_healthy }
+      cache: { condition: service_healthy }
+    healthcheck: &webhealth
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/arena/readyz', timeout=4).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+  worker:
+    image: arena-platform:local
+    command: ["worker"]
+    restart: unless-stopped
+    environment: *appenv
+    depends_on:
+      ctfd: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "flask", "arena", "worker-health", "--host", "--max-age", "60"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+  db:
+    image: mariadb:10.11
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: root-dev
+      MARIADB_USER: ctfd
+      MARIADB_PASSWORD: ctfd-dev
+      MARIADB_DATABASE: ctfd
+    command: [mysqld, --character-set-server=utf8mb4, --collation-server=utf8mb4_unicode_ci, --wait_timeout=28800]
+    volumes: [db:/var/lib/mysql]
+    healthcheck: &dbhealth
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+  cache:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+volumes:
+  db:
+  uploads:

@@ -15,9 +15,11 @@ from sqlalchemy import or_
 from CTFd.models import db
 from CTFd.plugins.arena.models import (
     ROLE_AD_OPERATOR,
-    ROLE_AUDITOR,
+    ROLE_ANALYST,
     ROLE_CERT_MANAGER,
-    ROLE_EVENT_ADMIN,
+    ROLE_CHALLENGE_MANAGER,
+    ROLE_ORGANIZER,
+    ROLE_SCOREBOARD_OPERATOR,
     ROLES,
     ArenaRole,
 )
@@ -29,14 +31,18 @@ PERM_TEAMS_MANAGE = "teams.manage"
 PERM_CHALLENGES_MANAGE = "challenges.manage"
 PERM_SCORING_MANAGE = "scoring.manage"
 PERM_AD_OPERATE = "ad.operate"
+PERM_LABS_MANAGE = "labs.manage"
 PERM_CERTIFICATES_MANAGE = "certificates.manage"
 PERM_AUDIT_READ = "audit.read"
+PERM_ANALYTICS_READ = "analytics.read"
 # Superadmin-only (granted by no role):
 PERM_EVENTS_CREATE = "events.create"
 PERM_ROLES_MANAGE = "roles.manage"
+PERM_PLATFORM_MANAGE = "platform.manage"  # runner/providers/jobs, platform-wide
 
 ROLE_PERMISSIONS = {
-    ROLE_EVENT_ADMIN: frozenset(
+    # Event organizer: full control of one event (not platform-wide ops).
+    ROLE_ORGANIZER: frozenset(
         {
             PERM_EVENT_VIEW_ADMIN,
             PERM_EVENT_MANAGE,
@@ -45,19 +51,30 @@ ROLE_PERMISSIONS = {
             PERM_CHALLENGES_MANAGE,
             PERM_SCORING_MANAGE,
             PERM_AD_OPERATE,
+            PERM_LABS_MANAGE,
             PERM_CERTIFICATES_MANAGE,
             PERM_AUDIT_READ,
+            PERM_ANALYTICS_READ,
         }
     ),
+    ROLE_CHALLENGE_MANAGER: frozenset({PERM_EVENT_VIEW_ADMIN, PERM_CHALLENGES_MANAGE}),
+    ROLE_SCOREBOARD_OPERATOR: frozenset({PERM_EVENT_VIEW_ADMIN, PERM_SCORING_MANAGE}),
     ROLE_AD_OPERATOR: frozenset({PERM_EVENT_VIEW_ADMIN, PERM_AD_OPERATE}),
     ROLE_CERT_MANAGER: frozenset({PERM_EVENT_VIEW_ADMIN, PERM_CERTIFICATES_MANAGE}),
-    ROLE_AUDITOR: frozenset({PERM_EVENT_VIEW_ADMIN, PERM_AUDIT_READ}),
+    # Read-only analyst.
+    ROLE_ANALYST: frozenset(
+        {PERM_EVENT_VIEW_ADMIN, PERM_AUDIT_READ, PERM_ANALYTICS_READ}
+    ),
 }
 
 ALL_PERMISSIONS = frozenset().union(*ROLE_PERMISSIONS.values()) | {
     PERM_EVENTS_CREATE,
     PERM_ROLES_MANAGE,
+    PERM_PLATFORM_MANAGE,
 }
+SUPERADMIN_ONLY = frozenset(
+    {PERM_EVENTS_CREATE, PERM_ROLES_MANAGE, PERM_PLATFORM_MANAGE}
+)
 
 if set(ROLE_PERMISSIONS) != set(ROLES):  # explicit: asserts vanish under -O
     raise RuntimeError("ROLE_PERMISSIONS must define every role")

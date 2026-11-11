@@ -13,18 +13,29 @@ from sqlalchemy.orm import validates
 from CTFd.models import db
 
 EVENT_TYPES = ("jeopardy", "ad", "mixed")
-EVENT_STATUSES = ("draft", "published", "running", "paused", "ended", "archived")
+EVENT_STATUSES = ("draft", "upcoming", "active", "paused", "completed", "archived")
 EVENT_VISIBILITIES = ("public", "unlisted", "private")
 TEAM_MODES = ("individual", "team")
 
 REGISTRATION_STATUSES = ("pending", "approved", "rejected", "withdrawn", "banned")
 REGISTRATION_SOURCES = ("self", "admin", "import")
 
-ROLE_EVENT_ADMIN = "event_admin"
+ROLE_ORGANIZER = "organizer"
+ROLE_CHALLENGE_MANAGER = "challenge_manager"
+ROLE_SCOREBOARD_OPERATOR = "scoreboard_operator"
 ROLE_AD_OPERATOR = "ad_operator"
 ROLE_CERT_MANAGER = "cert_manager"
-ROLE_AUDITOR = "auditor"
-ROLES = (ROLE_EVENT_ADMIN, ROLE_AD_OPERATOR, ROLE_CERT_MANAGER, ROLE_AUDITOR)
+ROLE_ANALYST = "analyst"
+ROLES = (
+    ROLE_ORGANIZER,
+    ROLE_CHALLENGE_MANAGER,
+    ROLE_SCOREBOARD_OPERATOR,
+    ROLE_AD_OPERATOR,
+    ROLE_CERT_MANAGER,
+    ROLE_ANALYST,
+)
+# Statuses of a registration that occupy a seat (count towards capacity).
+SEAT_STATUSES = ("pending", "approved")
 
 # Microsecond precision on MySQL/MariaDB keeps ordering stable for bursts.
 UTCDateTime = db.DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql")
@@ -86,6 +97,12 @@ class ArenaEvent(db.Model):
     team_mode = db.Column(db.String(16), nullable=False, default="individual")
     team_size_min = db.Column(db.Integer, nullable=False, default=1)
     team_size_max = db.Column(db.Integer, nullable=False, default=1)
+
+    # Branding and settings are validated by services.events / services.settings.
+    branding = db.Column(db.JSON, nullable=True)
+    settings = db.Column(db.JSON, nullable=True)
+    # Atomic capacity counter: seats held by pending/approved registrations.
+    seat_count = db.Column(db.Integer, nullable=False, default=0)
 
     jeopardy_enabled = db.Column(db.Boolean, nullable=False, default=True)
     ad_enabled = db.Column(db.Boolean, nullable=False, default=False)
@@ -160,6 +177,13 @@ class ArenaRegistration(db.Model):
         db.ForeignKey("users.id", ondelete="SET NULL", name="fk_arena_reg_approver"),
         nullable=True,
     )
+    invite_id = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            "arena_event_invites.id", ondelete="SET NULL", name="fk_arena_reg_invite"
+        ),
+        nullable=True,
+    )
     created_at = db.Column(UTCDateTime, nullable=False, default=utcnow)
     updated_at = db.Column(UTCDateTime, nullable=False, default=utcnow, onupdate=utcnow)
 
@@ -214,3 +238,59 @@ class ArenaRole(db.Model):
     @validates("role")
     def _v_role(self, key, value):
         return _check(value, ROLES, key)
+
+
+class ArenaEventInvite(db.Model):
+    """Invitation code for registering into an event (required for private
+    events and for events with settings.invite_only). Only a SHA-256 hash of
+    the code is stored."""
+
+    __tablename__ = "arena_event_invites"
+    __table_args__ = (
+        db.UniqueConstraint("code_hash", name="uq_arena_invites_code"),
+        db.Index("ix_arena_invites_event", "event_id"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    event_id = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            "arena_events.id", ondelete="CASCADE", name="fk_arena_invites_event"
+        ),
+        nullable=False,
+    )
+    code_hash = db.Column(db.String(64), nullable=False)
+    label = db.Column(db.String(128), nullable=True)
+    max_uses = db.Column(db.Integer, nullable=True)
+    uses = db.Column(db.Integer, nullable=False, default=0)
+    expires_at = db.Column(UTCDateTime, nullable=True)
+    revoked_at = db.Column(UTCDateTime, nullable=True)
+    created_by = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL", name="fk_arena_invites_creator"),
+        nullable=True,
+    )
+    created_at = db.Column(UTCDateTime, nullable=False, default=utcnow)
+
+
+class ArenaAnnouncement(db.Model):
+    """Event-scoped announcement (native CTFd notifications are global)."""
+
+    __tablename__ = "arena_announcements"
+    __table_args__ = (db.Index("ix_arena_ann_event_time", "event_id", "created_at"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    event_id = db.Column(
+        db.Integer,
+        db.ForeignKey("arena_events.id", ondelete="CASCADE", name="fk_arena_ann_event"),
+        nullable=False,
+    )
+    title = db.Column(db.String(128), nullable=False)
+    body = db.Column(db.Text, nullable=False)
+    pinned = db.Column(db.Boolean, nullable=False, default=False)
+    created_by = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL", name="fk_arena_ann_creator"),
+        nullable=True,
+    )
+    created_at = db.Column(UTCDateTime, nullable=False, default=utcnow)

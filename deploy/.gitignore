@@ -1,0 +1,9 @@
+# Never commit secrets, TLS material or backups.
+.env
+*.env
+!examples/*.env.example
+nginx/certs/
+backups/
+compose/runner-ca/
+compose/runner-tls/
+compose/runner-ca-key/

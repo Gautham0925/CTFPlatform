@@ -1,0 +1,8 @@
+# Profile C overrides (loaded after arena.cnf). Size the buffer pool to
+# ~50-60% of the memory given to the DB container.
+[mysqld]
+innodb_buffer_pool_size = 3G
+innodb_log_file_size = 1G
+max_connections = 500
+thread_cache_size = 64
+table_open_cache = 4000

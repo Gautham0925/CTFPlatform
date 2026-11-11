@@ -1,0 +1,37 @@
+# Runner host (Profile C). Run on a SEPARATE machine from the platform:
+#   cd runner && cp ../deploy/examples/runner.env.example .env  (edit)
+#   docker compose -f ../deploy/compose/runner.yml --env-file .env up -d --build
+#   sudo ../runner/firewall/docker-user.sh   (egress/ingress isolation)
+# This is the only component that talks to the Docker daemon. Its API is
+# served over TLS (certs in deploy/compose/runner-tls/) and every request is
+# HMAC-signed by the platform.
+name: arena-runner
+services:
+  runner:
+    build: { context: ../../runner }
+    image: arena-runner:local
+    restart: unless-stopped
+    env_file: [../../runner/.env]
+    environment:
+      ARENA_RUNNER_DB: /var/lib/arena-runner/state.db
+      # TLS for the control API (platform verifies with ARENA_RUNNER_CA).
+      GUNICORN_CMD_ARGS: "--certfile /run/tls/runner.crt --keyfile /run/tls/runner.key"
+    ports:
+      # Control API: restrict to the platform's address with the host firewall.
+      - "${ARENA_RUNNER_API_BIND:-0.0.0.0}:8443:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - runner-state:/var/lib/arena-runner
+      - ./runner-tls:/run/tls:ro
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import ssl,urllib.request,sys; c=ssl._create_unverified_context(); sys.exit(0 if urllib.request.urlopen('https://127.0.0.1:8080/livez', context=c, timeout=4).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    # Challenge containers are started by the runner on the host network
+    # namespace of the Docker daemon, with ports bound to ARENA_RUNNER_BIND_IP.
+volumes:
+  runner-state:

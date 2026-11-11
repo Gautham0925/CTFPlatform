@@ -1,0 +1,28 @@
+# Applies only to deploy/docker/platform.Dockerfile (BuildKit).
+.git
+.github
+.data
+**/.venv
+**/.venv*
+**/venv*
+**/node_modules
+**/__pycache__
+**/*.pyc
+.ctfd_secret_key
+CTFd/*.db
+CTFd/logs/*.log
+CTFd/uploads
+CTFd/static/uploads
+# The runner is a separate service on a separate host; never ship it (or any
+# Docker tooling) inside the platform image.
+runner
+tests
+docs
+# Secrets and TLS material must never enter an image.
+deploy/.env
+deploy/**/*.env
+deploy/examples/*.env
+deploy/nginx/certs
+deploy/backups
+**/*.pem
+**/*.key

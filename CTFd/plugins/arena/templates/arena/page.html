@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block stylesheets %}
+  {{ super() }}
+  <link rel="stylesheet" href="{{ request.script_root }}/plugins/arena/assets/arena.css?v={{ arena_version }}">
+{% endblock %}
+
+{% block content %}
+<div class="arena container py-4"
+     id="arena-app"
+     data-page="{{ page }}"
+     data-api="{{ request.script_root }}/api/v1/arena"
+     data-base="{{ request.script_root }}"
+     {% if event %}data-event-id="{{ event.id }}" data-event-slug="{{ event.slug }}"
+     data-event-type="{{ event.type }}" data-team-mode="{{ event.team_mode }}"
+     data-registration="{{ registration or '' }}"{% endif %}
+     {% if perms %}data-perms="{{ perms | join(',') }}"{% endif %}
+     data-superadmin="{{ 'true' if is_superadmin else 'false' }}"
+     data-certificates="{{ 'true' if certificates_enabled else 'false' }}"
+     {% if public_id %}data-public-id="{{ public_id }}" data-code="{{ code }}"{% endif %}
+     data-user-id="{{ Session.id or '' }}">
+
+  {% if event and tabs %}
+  <header class="arena-event-header mb-3">
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <h1 class="h3 mb-0 me-auto">
+        <a class="text-reset text-decoration-none" href="{{ request.script_root }}/arena/e/{{ event.slug }}">{{ event.name }}</a>
+        <span class="badge text-bg-secondary arena-badge ms-1">{{ event.type | upper }}</span>
+      </h1>
+      <span class="arena-phase small" data-arena-phase></span>
+      {% if can_admin %}<a class="btn btn-sm btn-outline-secondary" href="{{ request.script_root }}/arena/admin/e/{{ event.id }}">Manage</a>{% endif %}
+    </div>
+    <nav aria-label="Event sections" class="mt-3">
+      <ul class="nav nav-tabs arena-tabs flex-nowrap overflow-auto">
+        {% for key, label in tabs %}
+        <li class="nav-item"><a class="nav-link text-nowrap {% if key == section %}active{% endif %}"
+           {% if key == section %}aria-current="page"{% endif %}
+           href="{{ request.script_root }}/arena/e/{{ event.slug }}{% if key != 'overview' %}/{{ key }}{% endif %}">{{ label }}</a></li>
+        {% endfor %}
+      </ul>
+    </nav>
+  </header>
+  {% else %}
+  <header class="mb-3 d-flex align-items-center gap-2 flex-wrap">
+    <h1 class="h3 mb-0 me-auto">{{ title }}</h1>
+    {% if page.startswith('admin') %}
+      <a class="btn btn-sm btn-outline-secondary" href="{{ request.script_root }}/arena/admin">Events</a>
+      {% if is_superadmin %}<a class="btn btn-sm btn-outline-secondary" href="{{ request.script_root }}/arena/admin/platform">Platform</a>{% endif %}
+    {% else %}
+      <a class="btn btn-sm btn-outline-primary" href="{{ request.script_root }}/arena/join">Have an invitation code?</a>
+    {% endif %}
+  </header>
+  {% endif %}
+
+  <div id="arena-alerts" aria-live="polite"></div>
+  <main id="arena-main"><div class="arena-loading text-muted" role="status">Loading…</div></main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script src="{{ request.script_root }}/plugins/arena/assets/arena.js?v={{ arena_version }}" defer></script>
+  {% if page.startswith('admin') %}
+  <script src="{{ request.script_root }}/plugins/arena/assets/arena-admin.js?v={{ arena_version }}" defer></script>
+  {% endif %}
+{% endblock %}

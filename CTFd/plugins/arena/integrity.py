@@ -82,11 +82,127 @@ def check_roles():
     return problems
 
 
+def check_seat_counts():
+    from CTFd.plugins.arena.models import SEAT_STATUSES, ArenaRegistration
+
+    problems = []
+    held = dict(
+        db.session.query(ArenaRegistration.event_id, func.count(ArenaRegistration.id))
+        .filter(ArenaRegistration.status.in_(SEAT_STATUSES))
+        .group_by(ArenaRegistration.event_id)
+        .all()
+    )
+    for e in ArenaEvent.query.all():
+        actual = held.get(e.id, 0)
+        if e.seat_count != actual:
+            problems.append(
+                f"event {e.id}: seat_count={e.seat_count} but {actual} seats held"
+            )
+        if e.max_participants is not None and actual > e.max_participants:
+            problems.append(
+                f"event {e.id}: {actual} seats held exceeds max_participants={e.max_participants}"
+            )
+    return problems
+
+
+def check_teams():
+    from CTFd.plugins.arena.models import (
+        ArenaRegistration,
+        ArenaTeam,
+        ArenaTeamMember,
+    )
+
+    problems = []
+    counts = dict(
+        db.session.query(ArenaTeamMember.team_id, func.count(ArenaTeamMember.id))
+        .group_by(ArenaTeamMember.team_id)
+        .all()
+    )
+    for t in ArenaTeam.query.all():
+        n = counts.get(t.id, 0)
+        if t.member_count != n:
+            problems.append(
+                f"team {t.id}: member_count={t.member_count} but {n} members"
+            )
+        captains = ArenaTeamMember.query.filter_by(team_id=t.id, role="captain").all()
+        if n and (len(captains) != 1 or captains[0].user_id != t.captain_user_id):
+            problems.append(f"team {t.id}: captain inconsistent")
+    mismatched = (
+        db.session.query(ArenaTeamMember.id)
+        .join(ArenaTeam, ArenaTeam.id == ArenaTeamMember.team_id)
+        .filter(ArenaTeam.event_id != ArenaTeamMember.event_id)
+        .count()
+    )
+    if mismatched:
+        problems.append(f"{mismatched} membership(s) with event_id != team.event_id")
+    unregistered = (
+        db.session.query(ArenaTeamMember.id)
+        .outerjoin(
+            ArenaRegistration,
+            (ArenaRegistration.event_id == ArenaTeamMember.event_id)
+            & (ArenaRegistration.user_id == ArenaTeamMember.user_id)
+            & (ArenaRegistration.status == "approved"),
+        )
+        .filter(ArenaRegistration.id.is_(None))
+        .count()
+    )
+    if unregistered:
+        problems.append(f"{unregistered} team member(s) without approved registration")
+    return problems
+
+
+def check_event_challenges():
+    """Every event challenge must stay sealed (native endpoints must 404)."""
+    from CTFd.models import Challenges
+    from CTFd.plugins.arena.models import ArenaEventChallenge, ArenaSolve
+
+    problems = []
+    rows = (
+        db.session.query(ArenaEventChallenge, Challenges, ArenaEvent.sealed_module_id)
+        .join(Challenges, Challenges.id == ArenaEventChallenge.challenge_id)
+        .join(ArenaEvent, ArenaEvent.id == ArenaEventChallenge.event_id)
+        .all()
+    )
+    for ec, c, sealed in rows:
+        if sealed is None or c.module_id is None:
+            problems.append(
+                f"event challenge {ec.id}: NOT SEALED (event has no sealed module)"
+            )
+        elif c.module_id != sealed:
+            problems.append(
+                f"event challenge {ec.id}: native module_id={c.module_id} != sealed {sealed}"
+            )
+        if c.state != "hidden":
+            problems.append(f"event challenge {ec.id}: native state is {c.state!r}")
+    counts = dict(
+        db.session.query(ArenaSolve.event_challenge_id, func.count(ArenaSolve.id))
+        .group_by(ArenaSolve.event_challenge_id)
+        .all()
+    )
+    for ec, _c, _s in rows:
+        if ec.solve_count != counts.get(ec.id, 0):
+            problems.append(f"event challenge {ec.id}: solve_count mismatch")
+    return problems
+
+
+def check_scoring():
+    from CTFd.plugins.arena.services import scoring
+
+    problems = []
+    for e in ArenaEvent.query.all():
+        problems += [f"event {e.id}: {p}" for p in scoring.verify(e)]
+    return problems
+
+
 CHECKS = {
     "schema": check_schema,
     "event_windows": check_event_windows,
     "sealed_modules": check_sealed_modules,
     "roles": check_roles,
+    "seat_counts": check_seat_counts,
+    "teams": check_teams,
+    "event_challenges": check_event_challenges,
+    "scoring": check_scoring,
 }
 
 

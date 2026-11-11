@@ -81,10 +81,10 @@ def t_broken(event):  # pragma: no cover - must never run
 
 
 EVENTS = {
-    "A": {"status": "running", "visibility": "public"},
-    "B": {"status": "running", "visibility": "private"},
+    "A": {"status": "active", "visibility": "public"},
+    "B": {"status": "active", "visibility": "private"},
     "C": {"status": "draft", "visibility": "public"},
-    "D": {"status": "running", "visibility": "unlisted"},
+    "D": {"status": "active", "visibility": "unlisted"},
 }
 
 # actor -> (registrations {event: status}, roles [(role, event or None)], admin?)
@@ -96,15 +96,15 @@ ACTORS = {
     "member_B": ({"B": "approved"}, [], False),
     "member_all": (dict.fromkeys(EVENTS, "approved"), [], False),
     "regbanned_A": ({"A": "banned"}, [], False),
-    "eadmin_A": ({}, [("event_admin", "A")], False),
-    "auditor_A": ({}, [("auditor", "A")], False),
-    "g_auditor": ({}, [("auditor", None)], False),
+    "eadmin_A": ({}, [("organizer", "A")], False),
+    "analyst_A": ({}, [("analyst", "A")], False),
+    "g_analyst": ({}, [("analyst", None)], False),
     "superadmin": ({}, [], True),
 }
 ROUTES = ("view", "part", "manage", "audit")
 PERMS = {
-    "manage": {"event_admin"},
-    "audit": {"event_admin", "auditor"},
+    "manage": {"organizer"},
+    "audit": {"organizer", "analyst"},
 }
 
 
@@ -219,7 +219,7 @@ def test_event_id_in_query_or_body_is_ignored(world):
     assert r.get_json()["event"] == ids["B"]  # handler only ever sees URL event
 
 
-def test_event_admin_cannot_manage_other_event_by_smuggling(world):
+def test_organizer_cannot_manage_other_event_by_smuggling(world):
     app, ids, _ = world
     c = client_for(app, "eadmin_A")
     r = c.post(
@@ -246,7 +246,7 @@ def test_child_object_from_other_event_is_404(world):
 def test_global_permission_superadmin_only(world):
     app, _, _ = world
     assert client_for(app, "anon").get("/t/global/create").status_code == 401
-    for actor in ("member_all", "eadmin_A", "g_auditor"):
+    for actor in ("member_all", "eadmin_A", "g_analyst"):
         assert client_for(app, actor).get("/t/global/create").status_code == 403
     assert client_for(app, "superadmin").get("/t/global/create").status_code == 200
 

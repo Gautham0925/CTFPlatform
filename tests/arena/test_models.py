@@ -109,9 +109,9 @@ def test_role_unique_per_event(app):
     with app.app_context():
         a = gen_event("a").id
         uid = make_user("u")
-        gen_role(uid, "auditor", a)
+        gen_role(uid, "analyst", a)
         with pytest.raises(IntegrityError):
-            gen_role(uid, "auditor", a)
+            gen_role(uid, "analyst", a)
         db.session.rollback()
 
 
@@ -120,7 +120,7 @@ def test_deleting_event_cascades_to_registrations_and_roles(app):
         e = gen_event("a")
         uid = make_user("u")
         gen_registration(e.id, uid)
-        gen_role(uid, "auditor", e.id)
+        gen_role(uid, "analyst", e.id)
         db.session.delete(e)
         db.session.commit()
         assert ArenaRegistration.query.count() == 0

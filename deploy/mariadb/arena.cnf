@@ -1,0 +1,16 @@
+# MariaDB settings for Arena (Profile B). Mounted into /etc/mysql/conf.d.
+[mysqld]
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+wait_timeout = 28800
+log-warnings = 0
+# Arena relies on InnoDB row locks and unique constraints for correctness.
+default-storage-engine = InnoDB
+innodb_buffer_pool_size = 512M
+innodb_log_file_size = 256M
+innodb_flush_log_at_trx_commit = 1
+max_connections = 200
+innodb_lock_wait_timeout = 20
+skip-name-resolve
+# Isolation stays at the InnoDB default (REPEATABLE-READ): that is what the
+# Arena concurrency tests run against.

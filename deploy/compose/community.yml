@@ -1,0 +1,143 @@
+# Profile B - community / small event (single host, TLS via nginx).
+#   cp deploy/examples/platform.env.example deploy/.env && deploy/scripts/gen-secrets.sh deploy/.env
+#   deploy/scripts/install.sh            (or the manual commands in DEPLOYMENT_GUIDE)
+# Only nginx publishes ports. MariaDB and Redis live on an internal network.
+# The platform NEVER mounts the Docker socket; challenge containers belong on
+# a separate runner host (Profile C, compose/runner.yml).
+name: arena
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "20m", max-file: "5" }
+x-app: &app
+  image: ${ARENA_IMAGE:-arena-platform:local}
+  restart: unless-stopped
+  logging: *logging
+  env_file: ["${ARENA_ENV_FILE:-../.env}"]
+  environment: &appenv
+    DATABASE_URL: mysql+pymysql://ctfd:${MARIADB_PASSWORD:?set in deploy/.env}@db/ctfd
+    REDIS_URL: redis://:${REDIS_PASSWORD:?set in deploy/.env}@cache:6379/0
+    UPLOAD_FOLDER: /var/uploads
+    LOG_FOLDER: /var/log/CTFd
+    ACCESS_LOG: "-"
+    ERROR_LOG: "-"
+    # nginx overwrites X-Forwarded-For with the real peer, so trust 1 hop.
+    REVERSE_PROXY: "true"
+    # Longer than nginx's upstream keepalive_timeout (30s), see arena.conf.template.
+    GUNICORN_CMD_ARGS: "--keep-alive 75"
+  volumes:
+    - uploads:/var/uploads
+    - ./runner-ca:/run/arena/runner-ca:ro
+  # internal: DB + Redis. egress: outbound HTTPS to the runner host and to
+  # external lab providers (SSRF-checked in the app; restrict further with a
+  # host firewall if you use neither).
+  networks: [internal, egress]
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+
+services:
+  migrate:
+    <<: *app
+    build: { context: ../.., dockerfile: deploy/docker/platform.Dockerfile }
+    command: ["migrate"]
+    restart: "no"
+    depends_on:
+      db: { condition: service_healthy }
+      cache: { condition: service_healthy }
+
+  ctfd:
+    <<: *app
+    command: ["web"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/arena/readyz', timeout=4).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  worker:
+    <<: *app
+    command: ["worker"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    stop_grace_period: 40s   # worker finishes its current job on SIGTERM
+    healthcheck:
+      test: ["CMD", "flask", "arena", "worker-health", "--host", "--max-age", "60"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+
+  nginx:
+    image: nginx:1.28-alpine
+    restart: unless-stopped
+    logging: *logging
+    ports: ["80:80", "443:443"]
+    environment:
+      ARENA_DOMAIN: ${ARENA_DOMAIN:?set in deploy/.env}
+      ARENA_RATELIMIT_EXEMPT_CIDR: ${ARENA_RATELIMIT_EXEMPT_CIDR:-192.0.2.255/32}
+    volumes:
+      - ../nginx/arena.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../nginx/certs:/etc/nginx/certs:ro
+      - acme:/var/www/acme:ro
+    depends_on:
+      ctfd: { condition: service_healthy }
+    networks: [internal, edge]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/nginx-health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  db:
+    image: mariadb:10.11
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?set in deploy/.env}
+      MARIADB_USER: ctfd
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?set in deploy/.env}
+      MARIADB_DATABASE: ctfd
+      MARIADB_AUTO_UPGRADE: "1"
+    volumes:
+      - db:/var/lib/mysql
+      - ../mariadb/arena.cnf:/etc/mysql/conf.d/arena.cnf:ro
+      - ../backups:/backups
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  cache:
+    image: redis:7-alpine
+    restart: unless-stopped
+    logging: *logging
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "${REDIS_PASSWORD:?set in deploy/.env}"]
+    volumes:
+      - ../redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis:/data   # AOF: login sessions survive a Redis restart
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+volumes:
+  db:
+  uploads:
+  acme:
+  redis:
+
+networks:
+  internal:
+    internal: true
+  edge:
+  egress:

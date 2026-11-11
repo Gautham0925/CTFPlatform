@@ -1,0 +1,33 @@
+# Profile C - competition. Overlay on top of community.yml:
+#   docker compose -f deploy/compose/community.yml -f deploy/compose/competition.yml up -d
+# Adds: more gunicorn workers and two web replicas, two job workers (one holds
+# the scheduler lease, both process jobs), larger DB/Redis memory, and the
+# remote runner (set ARENA_RUNNER_* in deploy/.env, CA in deploy/compose/runner-ca/).
+# Sizing figures are starting points; validate with the Phase 16 load tests.
+services:
+  ctfd:
+    deploy:
+      replicas: 2
+      resources:
+        limits: { cpus: "2.0", memory: 2g }
+    environment:
+      WORKERS: "${WORKERS:-4}"
+      ARENA_RUNNER_MODE: remote
+  worker:
+    deploy:
+      replicas: 2
+      resources:
+        limits: { cpus: "1.0", memory: 1g }
+    environment:
+      ARENA_RUNNER_MODE: remote
+  migrate:
+    environment:
+      ARENA_RUNNER_MODE: remote
+  db:
+    volumes:
+      - ../mariadb/arena-competition.cnf:/etc/mysql/conf.d/zz-competition.cnf:ro
+    deploy:
+      resources:
+        limits: { memory: 6g }
+  cache:
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "${REDIS_PASSWORD:?set in deploy/.env}", "--maxmemory", "1gb"]

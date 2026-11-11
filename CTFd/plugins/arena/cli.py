@@ -4,6 +4,9 @@ flask arena migrate [--revision REV]
 flask arena db-downgrade REV|base --yes
 flask arena db-current
 flask arena check-integrity
+flask arena worker [--once] [--no-schedule]
+flask arena worker-health [--max-age 60] [--host]
+flask arena jobs stats|retry|purge|recover
 """
 
 import json
@@ -58,3 +61,70 @@ def check_integrity():
             click.echo(f"    - {p}")
         failed = failed or bool(problems)
     sys.exit(1 if failed else 0)
+
+
+@arena_cli.command("worker")
+@click.option("--once", is_flag=True, help="Run a single iteration and exit.")
+@click.option(
+    "--poll", default=1.0, show_default=True, help="Idle poll interval (seconds)."
+)
+@click.option("--kinds", default=None, help="Comma-separated job kinds to process.")
+@click.option(
+    "--no-schedule", is_flag=True, help="Process jobs only; never run the scheduler."
+)
+def worker_cmd(once, poll, kinds, no_schedule):
+    """Run the Arena background worker (graceful stop on SIGTERM/SIGINT)."""
+    from flask import current_app
+
+    from CTFd.plugins.arena.worker import Worker
+
+    w = Worker(
+        current_app._get_current_object(),
+        poll_interval=poll,
+        kinds=kinds.split(",") if kinds else None,
+        schedule=not no_schedule,
+    )
+    w.install_signal_handlers()
+    w.run(max_iterations=1 if once else None)
+
+
+@arena_cli.command("worker-health")
+@click.option(
+    "--max-age", default=60, show_default=True, help="Heartbeat age limit (s)."
+)
+@click.option(
+    "--host", "this_host", is_flag=True, help="Only count workers on this hostname."
+)
+def worker_health_cmd(max_age, this_host):
+    """Exit 0 if at least one worker heartbeat is fresh (container healthcheck)."""
+    import socket
+
+    from CTFd.plugins.arena.worker import worker_health
+
+    report = worker_health(max_age_seconds=max_age)
+    workers = report["workers"]
+    if this_host:
+        prefix = socket.gethostname()[:40] + ":"
+        workers = [w for w in workers if w["id"].startswith(prefix)]
+    alive = [w for w in workers if w["heartbeat_age_s"] <= max_age]
+    click.echo(json.dumps({"alive": len(alive), "workers": workers}, default=str))
+    sys.exit(0 if alive else 1)
+
+
+@arena_cli.command("jobs")
+@click.argument("action", type=click.Choice(["stats", "retry", "purge", "recover"]))
+@click.argument("job_id", required=False, type=int)
+def jobs_cmd(action, job_id):
+    """Inspect and manage background jobs."""
+    from CTFd.plugins.arena.services import jobs
+
+    if action == "stats":
+        click.echo(json.dumps(jobs.stats(), indent=2))
+    elif action == "retry":
+        if job_id is None:
+            raise click.UsageError("job_id required")
+        click.echo("requeued" if jobs.retry_dead(job_id) else "not a dead job")
+    elif action == "purge":
+        click.echo(f"purged {jobs.purge_finished()}")
+    elif action == "recover":
+        click.echo(f"recovered {jobs.recover_stale()}")
