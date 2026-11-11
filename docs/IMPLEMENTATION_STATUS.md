@@ -80,7 +80,7 @@ Native `Users.team_id` is never read or written; a test asserts it stays NULL wh
 
 ## Phase 8 — Challenge runner
 **Implemented**: standalone `runner/` service (Flask, HMAC signing with replay store, MockBackend, hardened DockerBackend, reaper, firewall script with egress + input chains); platform clients Mock and HTTPS/HMAC; digest-pinned images; quotas.
-**Tests (actual)**: runner unit 28 passed; Docker integration 30 passed against a real daemon (capabilities, read-only, noexec tmpfs, pids limit, firewall blocks host/Redis/metadata).
+**Tests (actual)**: runner unit 28 passed; 6 Docker integration tests passed against a real daemon (capabilities, read-only, noexec tmpfs, pids limit, firewall blocks host/Redis/metadata).
 
 ## Phase 9 — Attack & Defense
 **Implemented**: services, team services, rounds (worker tick), HMAC flags per team/service/round, flag submission with lifetime and anti-self-capture, captures, checkers executed by the runner (`/v1/ad/check`, isolated network), SLA/defense/attack scoring into the ledger.
@@ -121,3 +121,21 @@ See PERFORMANCE_REPORT.md and SECURITY_GUIDE.md for all numbers. Summary (measur
 
 ## Phase 17 — Documentation
 docs/README.md indexes the full set. API routes and DB schema are generated from code by `tests/arena/tools/gen_reference_docs.py`.
+
+## Final
+
+Final regression on the tree of commit `2b6e16f3` (frozen snapshot), run on 2026-11-11:
+
+| Suite | Result |
+|---|---|
+| Arena on MariaDB 10.11 + Redis | **465 passed**, 0 failed |
+| Arena on SQLite | **446 passed**, 19 skipped (MariaDB-only concurrency/migration tests), 0 failed |
+| Native CTFd suite with Arena force-loaded | **737 passed, 5 skipped, 2 failed**: the two `test_plugin_utils` menu-position assertions explained in TESTING_GUIDE.md (Arena's menu items are registered first). Upstream baseline without Arena: 742 passed, 2 skipped |
+| Runner unit | **28 passed** |
+| Runner ↔ real Docker daemon (hardening, firewall) | **6 passed** |
+| Browser e2e (Playwright, desktop + mobile) | **17/17 checks passed**, no console errors |
+| Live security probes against Profile C | **22/22 passed** |
+| Deployment tests | included in the Arena counts above (compose validation, backup/restore round trip on MariaDB) |
+| Lint (`ruff check` + `ruff format --check`) | clean |
+
+No test was skipped, deselected or weakened to make it pass; the 19 SQLite skips are MariaDB-only tests that pass in the MariaDB run.

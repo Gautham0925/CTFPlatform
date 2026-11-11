@@ -24,6 +24,7 @@ For production, see `deploy/README.md` (Profiles B and C).
 |---|---|
 | [PROJECT_ANALYSIS](PROJECT_ANALYSIS.md) · [EXISTING_ARCHITECTURE](EXISTING_ARCHITECTURE.md) | What upstream CTFd provides and where its limits are |
 | [CUSTOM_ARCHITECTURE](CUSTOM_ARCHITECTURE.md) · [PLUGIN_DOCUMENTATION](PLUGIN_DOCUMENTATION.md) | How Arena is built |
+| [FINAL_REPORT](FINAL_REPORT.md) | The 20-section completion report + exact commands |
 | [IMPLEMENTATION_STATUS](IMPLEMENTATION_STATUS.md) | What is done, per phase, with test counts |
 | [INSTALLATION_GUIDE](INSTALLATION_GUIDE.md) · [DEPLOYMENT_GUIDE](DEPLOYMENT_GUIDE.md) · [../deploy/README.md](../deploy/README.md) | Installing and running it |
 | [CONFIGURATION_REFERENCE](CONFIGURATION_REFERENCE.md) | Every setting |

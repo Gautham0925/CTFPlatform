@@ -42,8 +42,10 @@ Runner:
 cd runner && .venv/bin/python -m pytest -q tests/test_runner.py
 ```
 
+The Docker integration tests are opt-in. They need root (iptables), a Docker daemon, and a digest-pinned test image (build `runner/tests/images/web` and push it to a local registry):
+
 ```bash
-cd runner && sudo .venv/bin/python -m pytest -q tests/test_docker_integration.py
+cd runner && sudo ARENA_RUNNER_DOCKER_TESTS=1 ARENA_TEST_IMAGE=127.0.0.1:5000/arena-test-web@sha256:<digest> .venv/bin/python -m pytest -q tests/test_docker_integration.py
 ```
 
 Browser end-to-end (writes screenshots to the given directory):
