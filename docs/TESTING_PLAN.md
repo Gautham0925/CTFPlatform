@@ -12,17 +12,28 @@
 | Runner | pytest against runner in docker-in-docker; escape checks | `runner/tests/` |
 | Load | Locust | `loadtest/` |
 
-## 2. Baseline (unmodified upstream, recorded 2026-11-11)
+## 2. Baseline (unmodified upstream)
 
-Environment: Python 3.11 venv, `requirements.txt` + pytest 8.4.2 / xdist / randomly, SQLite, 4 vCPU.
+**Environment setup** (pinned, from `uv.lock`; includes `moto` and all other dev dependencies):
 
-```
-.venv/bin/python -m pytest -q -n 8 -p no:randomly tests
-735 passed, 2 skipped, 1 error in 283.07s
-ERROR tests/utils/test_uploaders.py — ModuleNotFoundError: No module named 'moto'
+```bash
+UV_PROJECT_ENVIRONMENT=.venv uv sync --frozen --group dev --no-install-project -p python3.11
 ```
 
-The error comes from a missing dev dependency (`moto`, S3 mock), not a code failure. CI will install the full `uv` dev group so the baseline is 0 errors. **Every phase must keep the native suite at baseline.**
+**Baseline command:**
+
+```bash
+.venv/bin/python -m pytest -q -n 4 -p no:randomly tests
+```
+
+| Date | Tree | Result |
+|---|---|---|
+| 2026-11-11 (Phase 0) | upstream `485d59e7`, runtime deps only | 735 passed, 2 skipped, 1 collection error (`moto` missing) |
+| 2026-11-11 (Phase 1 prep) | Phase 0 commit `4d1a69f5` in a clean worktree, full dev group | **742 passed, 2 skipped, 0 failed, 0 errors** |
+
+Every phase must keep the native suite at this baseline, both as shipped and with plugin loading forced on for every test (see `PHASE_1_REPORT.md §5`).
+
+**MariaDB:** set `TESTING_DATABASE_URL=mysql+pymysql://user:pass@host/ctfd`. Each test app creates and drops its own database, so the user needs `CREATE`/`DROP` privileges.
 
 ## 3. Mandatory scenarios → tests
 

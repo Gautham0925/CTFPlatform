@@ -1,5 +1,7 @@
 # Database Design — Arena tables
 
+> **Implementation status:** Phase 1 implemented `arena_events`, `arena_registrations`, `arena_roles` (revision `a7e1f00d0001`). Deviations: enums are `VARCHAR`+`CHECK`; `scoring_config_id` → Phase 5; `secret_ref` → Phase 9; `arena_jobs` → Phase 6. See `CHANGELOG.md`.
+
 Target: **MariaDB 10.11** (as in upstream compose), InnoDB, `utf8mb4_unicode_ci`. SQLite is supported for unit tests only.
 All new tables use the prefix `arena_`. **No native table is altered.** The proposed logical entities map to physical tables like this:
 
