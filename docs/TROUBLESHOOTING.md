@@ -42,6 +42,7 @@ come from real failures found during Phase 15–16 testing.
 |---|---|
 | `worker-health` exits 1 | No heartbeat in `--max-age` seconds. Check `docker compose … logs worker`. A worker finishes its current job on SIGTERM (`stop_grace_period: 40s`). |
 | `jobs stats` shows `dead` jobs | Inspect them on Platform → Dead jobs and retry with `flask arena jobs retry <id>` once the cause is fixed. |
+| Worker memory grows steadily | Make sure CLI processes don't run in debug mode: `FLASK_ENV=production FLASK_DEBUG=0`. The repo's `.flaskenv` sets development mode for `flask run`. The image and systemd units already set this. Fixed in the worker itself since 0.2.0. |
 | `QueueFull` errors | More than `ARENA_JOBS_MAX_QUEUED` jobs of one kind are queued, so workers are not keeping up. Add a worker replica. |
 | Periodic tasks run twice | They should not: only the worker holding the DB lease (`arena_leases`) schedules. Check for a clock skew above the lease time. |
 

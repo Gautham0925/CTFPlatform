@@ -29,6 +29,7 @@ Changes of the Arena extension. CTFd's own history is in the root `CHANGELOG.md`
 - `check-integrity` / scoreboard verify failed with MariaDB error 1267 when the connection and column collations differ.
 - `/arena/readyz` was answered by CTFd's setup redirect before setup.
 - Deployment: Redis persistence (sessions survive restarts); nginx↔gunicorn keep-alive race that caused 502 storms; egress network for web/worker; runner CA key kept out of the platform mount.
+- Worker memory leak: `flask arena worker` inherited `FLASK_ENV=development` from the repo's `.flaskenv` (debug mode), and Flask-SQLAlchemy recorded every query on the worker's single, never-ending app context. The worker now uses a context per iteration; the image and systemd units force production mode.
 - Runner: Flask 3.1.3 / Werkzeug 3.1.9 (pip-audit), column allow-list in `store.update`, optional `ARENA_RUNNER_FORCE_USER`, unauthenticated `/livez`.
 
 ### Changed

@@ -65,6 +65,7 @@ external test before a high-stakes event.
 | Non-persistent Redis logged out all users on restart | Medium (availability) | AOF persistence + volume; test |
 | SSRF docstring overstated DNS-rebinding protection | Doc | Corrected; listed below as residual risk |
 | Integrity check crashed on production collation | Low | Python-side comparison; regression test |
+| Worker ran in Flask debug mode (repo `.flaskenv`) and leaked memory through recorded SQL queries | Medium (availability) | Per-iteration app context; `FLASK_ENV=production FLASK_DEBUG=0` in image and units; tests |
 
 ## Residual risks
 

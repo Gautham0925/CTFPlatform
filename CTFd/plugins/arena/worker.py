@@ -141,13 +141,18 @@ class Worker:
         return status
 
     def run(self, max_iterations=None):
+        # Each iteration runs in its OWN app context, and the DB session is
+        # removed afterwards. A single long-lived context leaks: e.g. with
+        # app.debug or TESTING, Flask-SQLAlchemy appends every query to a list
+        # stored on the app context (found in the Phase 16 soak test).
         with self.app.app_context():
             self._register()
-            log.info("arena worker %s started", self.id)
-            iterations = 0
-            last_beat = 0.0
-            try:
-                while not self.stop_event.is_set():
+        log.info("arena worker %s started", self.id)
+        iterations = 0
+        last_beat = 0.0
+        try:
+            while not self.stop_event.is_set():
+                with self.app.app_context():
                     try:
                         status = self.run_once()
                     except Exception:  # noqa: BLE001 - DB hiccup: back off, keep running
@@ -155,18 +160,20 @@ class Worker:
                         log.exception("worker iteration failed")
                         status = None
                         self.stop_event.wait(min(10, self.poll_interval * 5))
-                    iterations += 1
-                    if max_iterations is not None and iterations >= max_iterations:
-                        break
-                    if status is None:
-                        if time.monotonic() - last_beat > 10:
-                            try:
-                                self.heartbeat()
-                            except Exception:  # noqa: BLE001
-                                db.session.rollback()
-                            last_beat = time.monotonic()
-                        self.stop_event.wait(self.poll_interval)
-            finally:
+                    if status is None and time.monotonic() - last_beat > 10:
+                        try:
+                            self.heartbeat()
+                        except Exception:  # noqa: BLE001
+                            db.session.rollback()
+                        last_beat = time.monotonic()
+                    db.session.remove()
+                iterations += 1
+                if max_iterations is not None and iterations >= max_iterations:
+                    break
+                if status is None:
+                    self.stop_event.wait(self.poll_interval)
+        finally:
+            with self.app.app_context():
                 try:
                     jobs.release_lease(LEADER_LEASE, self.id)
                     w = db.session.get(ArenaWorker, self.id)
@@ -175,7 +182,7 @@ class Worker:
                         db.session.commit()
                 except Exception:  # noqa: BLE001
                     db.session.rollback()
-                log.info("arena worker %s stopped", self.id)
+            log.info("arena worker %s stopped", self.id)
 
 
 def worker_health(max_age_seconds=60):

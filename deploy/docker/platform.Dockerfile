@@ -33,7 +33,10 @@ RUN apt-get update \
 COPY --chown=1001:1001 . /opt/CTFd
 COPY --chown=1001:1001 --from=build /opt/venv /opt/venv
 RUN chmod +x /opt/CTFd/docker-entrypoint.sh /opt/CTFd/deploy/docker/arena-entrypoint.sh
-ENV PATH="/opt/venv/bin:$PATH" PYTHONDONTWRITEBYTECODE=1
+# The repo's .flaskenv sets FLASK_ENV=development for local `flask run`; the
+# flask CLI would load it for the worker and migrations (debug mode, and with
+# it unbounded SQLAlchemy query recording). Real env vars win over .flaskenv.
+ENV PATH="/opt/venv/bin:$PATH" PYTHONDONTWRITEBYTECODE=1 FLASK_ENV=production FLASK_DEBUG=0
 USER 1001
 EXPOSE 8000
 ENTRYPOINT ["/opt/CTFd/deploy/docker/arena-entrypoint.sh"]

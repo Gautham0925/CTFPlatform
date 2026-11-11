@@ -39,6 +39,14 @@ def _slow(payload, job):
     return {}
 
 
+@jobs.handler("test.probe", max_attempts=1, lease_seconds=60)
+def _probe(payload, job):
+    from flask_sqlalchemy import get_debug_queries
+
+    CALLS.append(("probe", len(get_debug_queries())))
+    return {}
+
+
 @pytest.fixture
 def app():
     CALLS.clear()
@@ -300,3 +308,24 @@ def test_scheduler_worker_still_processes_jobs_eventually(app):
         jobs.enqueue("test.ok", {"n": 99})
     Worker(app, poll_interval=0.01).run(max_iterations=60)
     assert ("ok", 99) in CALLS
+
+
+def test_worker_memory_is_bounded_in_debug_mode(app):
+    """Regression (Phase 16 soak): the worker ran its whole loop in one app
+    context; with app.debug, Flask-SQLAlchemy appended every query to a list on
+    that context, so the scheduler leader grew ~60 MB per 30 min. Each
+    iteration now gets a fresh context, so the recorded-query list resets."""
+    app.debug = True
+    try:
+        with app.app_context():
+            for _ in range(15):
+                jobs.enqueue("test.probe", {})
+        w = Worker(app, poll_interval=0.01, schedule=True)
+        w.run(max_iterations=40)
+    finally:
+        app.debug = False
+    seen = [n for k, n in CALLS if k == "probe"]
+    assert len(seen) == 15
+    # per-iteration context: what one iteration recorded, never a running total
+    assert max(seen) < 60, seen
+    assert seen[-1] <= seen[0] + 10, seen

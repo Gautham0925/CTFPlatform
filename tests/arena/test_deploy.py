@@ -334,3 +334,12 @@ def test_redis_persists_sessions():
     assert any(
         str(v).endswith(":/data") or ":/data " in str(v) for v in cache["volumes"]
     )
+
+
+def test_cli_processes_never_run_in_debug_mode():
+    """Regression (Phase 16 soak): .flaskenv put `flask arena worker` in debug
+    mode, which made Flask-SQLAlchemy record every query."""
+    dockerfile = (DEPLOY / "docker" / "platform.Dockerfile").read_text()
+    assert "FLASK_ENV=production" in dockerfile and "FLASK_DEBUG=0" in dockerfile
+    for unit in ("arena-web.service", "arena-worker.service"):
+        assert "FLASK_DEBUG=0" in (DEPLOY / "systemd" / unit).read_text()

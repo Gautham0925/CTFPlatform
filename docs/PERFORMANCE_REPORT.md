@@ -53,7 +53,31 @@ run was **read-heavy** (only 293 submissions). Memory before → after:
 web replicas 404 → 414 MB, MariaDB 178 → 183 MB, worker-1 121 → 179 MB,
 worker-2 107 → 113 MB.
 
-Run 2 (`soak30b`, fresh events, normal submission mix): see below.
+Run 2 (`soak30b`, fresh events, normal submission mix): **44,841 requests,
+0 failures, 24.9 req/s**, p50 19 ms, p95 35 ms, p99 52 ms. 6,133 flag
+submissions, 1,772 correct, all within p95 41 ms. Afterwards: 4,772 solves =
+4,772 ledger rows, 0 duplicates, integrity OK, 0 dead jobs. Memory before →
+after: web replicas 414 → 418 MB, MariaDB 183 → 192 MB, worker-2 113 → 118 MB,
+**worker-1 180 → 247 MB**.
+
+**Memory leak found and fixed.** Worker-1 (the scheduler leader) grew by about
+60 MB per 30 min across both soaks (121 → 179 → 247 MB); worker-2 stayed
+flat. Cause: the repo's native `.flaskenv` sets `FLASK_ENV=development`, so
+`flask arena worker` ran with `app.debug=True`. In debug mode Flask-SQLAlchemy
+2.x appends every query to a list on the app context, and the worker kept a
+single app context for its whole life. Fixes: (1) the worker now uses a fresh
+app context and DB session per iteration, so memory stays bounded whatever the
+mode (regression test: 1,129 accumulated queries before the fix, bounded after);
+(2) the image and systemd units set `FLASK_ENV=production FLASK_DEBUG=0`.
+Verification run after the fix: see "Worker memory after the fix".
+
+### Worker memory after the fix (`memcheck15`)
+
+Same stack after the worker fix, 100 users for 15 min on fresh events:
+**22,562 requests, 0 failures**, p95 41 ms, 3,139 submissions. Worker memory
+sampled every 30 s: worker-1 (leader) **100.4 → 101.7 MB**, worker-2
+99.5 → 100.6 MB, i.e. flat (before the fix the leader grew about 30 MB per
+15 min).
 
 ## Burst scenarios
 

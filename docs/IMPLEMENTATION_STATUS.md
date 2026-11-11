@@ -111,13 +111,13 @@ Native `Users.team_id` is never read or written; a test asserts it stays NULL wh
 ## Phase 16 — Load, security and reliability
 See PERFORMANCE_REPORT.md and SECURITY_GUIDE.md for all numbers. Summary (measured on a 4 vCPU VM shared with the load generator):
 - 100 concurrent players, 10 min: 15,183 requests, 0 failures, API p95 ≤ 42 ms.
-- Soak 30 min (read-heavy): 38,920 requests, 0 failures. Second soak with fresh events: see PERFORMANCE_REPORT.
+- Soak 30 min ×2: 38,920 requests (read-heavy) and 44,841 requests (6,133 submissions), 0 failures each; worker memory leak found and fixed.
 - Login storm 150 users at 50/s: 0 failures, p95 8.5 s (bcrypt CPU bound, native).
 - Submission storm: 54 req/s, 0 failures, 0 duplicate solves.
 - Instance burst with runner outage: 476 cycles, all reached running.
 - Fault injection (Redis, worker, web SIGKILL, MariaDB, runner): 0.12 % failures, all within about 1 s of a fault.
 - Security: authorization sweep over all routes, 22/22 live probes, Bandit triaged, pip-audit (runner upgraded; inherited CTFd pins documented).
-**Defects found and fixed**: `ARENA_*` env vars ignored (secret key fallback); per-IP rate limits behind NAT; released instances holding quota; Redis without persistence (mass logout); nginx/gunicorn keep-alive race (502 storms); runner store column allow-list. **Not done**: ZAP scan and nmap (tools unavailable in the sandbox), third-party pentest, load tests on dedicated or larger hardware.
+**Defects found and fixed**: worker memory leak (debug mode via `.flaskenv` + a single long-lived app context; found in the 30-min soaks); `ARENA_*` env vars ignored (secret key fallback); per-IP rate limits behind NAT; released instances holding quota; Redis without persistence (mass logout); nginx/gunicorn keep-alive race (502 storms); runner store column allow-list. **Not done**: ZAP scan and nmap (tools unavailable in the sandbox), third-party pentest, load tests on dedicated or larger hardware.
 
 ## Phase 17 — Documentation
 docs/README.md indexes the full set. API routes and DB schema are generated from code by `tests/arena/tools/gen_reference_docs.py`.

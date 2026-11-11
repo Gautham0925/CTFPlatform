@@ -8,6 +8,8 @@ User=ctfd
 Group=ctfd
 WorkingDirectory=/opt/arena
 EnvironmentFile=/etc/arena/arena.env
+# Override the repo .flaskenv (FLASK_ENV=development) for flask CLI commands.
+Environment=FLASK_ENV=production FLASK_DEBUG=0
 ExecStart=/opt/arena/.venv/bin/flask arena worker
 # The worker finishes its current job on SIGTERM.
 KillSignal=SIGTERM
